@@ -135,6 +135,8 @@ header .ref b{display:block;color:#fff;font-size:13px;font-weight:700}
 .hito:last-child span{left:auto;right:-6px;transform:none}
 .hito:hover span,.hito.es span{color:#fff}
 .hito.es span{font-weight:800}
+#snd{flex:none;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid var(--line);display:grid;place-items:center}
+#snd svg{width:20px;height:20px}
 #time{flex:none;width:84px;text-align:right;font-size:13px;font-weight:600;color:var(--mute);font-variant-numeric:tabular-nums}
 
 /* Portada */
@@ -252,6 +254,7 @@ body.og #og{display:flex;position:fixed;inset:0;z-index:20;flex-direction:column
   <button id="pp" aria-label="Reproducir o pausar"></button>
   <div id="trk" role="slider" aria-label="Línea de tiempo de la propuesta"><div id="rail"><div id="fill"></div></div><div id="thumb"></div></div>
   <div id="time">0:00</div>
+  <button id="snd" aria-label="Activar o silenciar el sonido"></button>
 </footer>
 
 <div id="portada"><div>
@@ -682,23 +685,75 @@ function setPanel(i) {
     '<div class="sigue">' + ICO.play + 'Toque la pantalla para continuar</div>';
   mini.querySelector('small').textContent = c.k; mini.querySelector('b').textContent = c.h;
 }
+/* ---------- Sonido: efectos y música ambiental generados en el navegador (sin archivos ni licencias) ---------- */
+let AC = null, master, musG, sfxG, muted = false, nextChord = 0, chordI = 0, duck = null, prevT = 0;
+try { muted = localStorage.getItem('maat-silencio') === '1'; } catch (e) {}
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const ACORDES = [[38, 50, 57, 64, 66], [35, 47, 54, 57, 62], [31, 43, 50, 54, 59], [33, 45, 52, 57, 61]];
+const SND = { on: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>', off: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>' };
+const sndBtn = $('snd'); sndBtn.innerHTML = muted ? SND.off : SND.on;
+function tone(f, t0, dur, vol, type, dest, f2) {
+  const o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.setValueAtTime(f, t0); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
+  g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + .012); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+  o.connect(g); g.connect(dest); o.start(t0); o.stop(t0 + dur + .05);
+}
+function acorde(n, t0) {
+  n.forEach((m, i) => { for (const d of (i ? [-7, 7] : [0])) {
+    const o = AC.createOscillator(), g = AC.createGain(), v = i ? .045 : .2; o.type = i ? 'sawtooth' : 'sine'; o.frequency.value = mtof(m); o.detune.value = d;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(v, t0 + 2.6); g.gain.setValueAtTime(v, t0 + 6); g.gain.linearRampToValueAtTime(0, t0 + 10.5);
+    o.connect(g); g.connect(musG); o.start(t0); o.stop(t0 + 10.6);
+  } });
+  for (let k = 0; k < 8; k++) tone(mtof(n[1 + (k * 3) % 4] + 12 + (k % 4 === 3 ? 12 : 0)), t0 + k, 1.1, .06, 'triangle', musG);
+}
+function audioOn() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+  try {
+    AC = new C(); master = AC.createGain(); master.gain.value = muted ? 0 : 1; master.connect(AC.destination);
+    sfxG = AC.createGain(); sfxG.gain.value = .5; sfxG.connect(master);
+    musG = AC.createGain(); musG.gain.value = 0;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1150; lp.Q.value = .3;
+    const dl = AC.createDelay(1), fb = AC.createGain(); dl.delayTime.value = .42; fb.gain.value = .36;
+    musG.connect(lp); lp.connect(master); lp.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(master);
+    nextChord = AC.currentTime + .15;
+    setInterval(() => { if (AC.state !== 'running') return; while (nextChord < AC.currentTime + 1.2) { acorde(ACORDES[chordI++ % 4], nextChord); nextChord += 8; } }, 400);
+  } catch (e) { AC = null; }
+}
+function sfx(n) {
+  if (!AC || muted) return; const t0 = AC.currentTime + .01;
+  if (n === 'tap') tone(620, t0, .1, .35, 'sine', sfxG, 880);
+  else if (n === 'play') { tone(523, t0, .14, .35, 'sine', sfxG); tone(784, t0 + .08, .22, .35, 'sine', sfxG); }
+  else if (n === 'pause') { tone(784, t0, .12, .3, 'sine', sfxG); tone(523, t0 + .08, .2, .3, 'sine', sfxG); }
+  else if (n === 'hito') { tone(880, t0, .09, .4, 'triangle', sfxG, 1320); tone(1320, t0 + .07, .35, .3, 'sine', sfxG); }
+  else if (n === 'campana') [74, 78, 81, 86].forEach((m, i) => tone(mtof(m), t0 + i * .09, 1.4, .3, 'sine', sfxG));
+  else if (n === 'paso') {
+    const len = AC.sampleRate * .8 | 0, buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = AC.createBufferSource(), bp = AC.createBiquadFilter(), g = AC.createGain(); src.buffer = buf; bp.type = 'bandpass'; bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(260, t0); bp.frequency.exponentialRampToValueAtTime(2600, t0 + .55);
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(.32, t0 + .28); g.gain.exponentialRampToValueAtTime(.0001, t0 + .78);
+    src.connect(bp); bp.connect(g); g.connect(sfxG); src.start(t0); tone(mtof(62), t0 + .3, .9, .16, 'sine', sfxG);
+  }
+}
+sndBtn.onclick = () => { audioOn(); muted = !muted; sndBtn.innerHTML = muted ? SND.off : SND.on; if (AC) master.gain.setTargetAtTime(muted ? 0 : 1, AC.currentTime, .05); try { localStorage.setItem('maat-silencio', muted ? '1' : '0'); } catch (e) {} };
+document.addEventListener('visibilitychange', () => { if (AC) document.hidden ? AC.suspend() : AC.resume(); });
 function seek(x) { t = clamp(x, 0, T); }
 function play(v) {
   playing = v;
   if (v) { if (sheet && resumeAt != null) t = resumeAt; sheet = false; resumeAt = null; if (t >= T - .05) t = 0; }
 }
 function detalle(i, desde) { playing = false; sheet = true; resumeAt = desde; }
-function start() { started = true; $('portada').classList.add('off'); play(true); }
+function start() { started = true; $('portada').classList.add('off'); audioOn(); sfx('play'); play(true); }
 $('go').onclick = start;
-pp.onclick = () => { if (!started) return start(); play(!playing); };
-$('otra').onclick = () => { seek(0); play(true); };
+pp.onclick = () => { if (!started) return start(); audioOn(); play(!playing); sfx(playing ? 'play' : 'pause'); };
+$('otra').onclick = () => { audioOn(); sfx('play'); seek(0); play(true); };
 let drag = false, wasPlaying = false;
 const tx = e => { const r = trk.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * T; };
 trk.addEventListener('pointerdown', e => {
   if (!started) { started = true; $('portada').classList.add('off'); }
+  audioOn();
   const h = e.target.closest('.hito');
   if (h) {
-    const i = +h.dataset.i, c = CH[i]; sheet = false; resumeAt = null;
+    const i = +h.dataset.i, c = CH[i]; sheet = false; resumeAt = null; sfx('hito');
     if (MOV() && c.h) { seek(c.s); detalle(i, c.t + .01); } else { seek(c.t + .01); play(true); }
     return;
   }
@@ -708,12 +763,13 @@ trk.addEventListener('pointerdown', e => {
 trk.addEventListener('pointermove', e => { if (drag) seek(tx(e)); });
 const endDrag = () => { if (drag) { drag = false; playing = wasPlaying && t < T - .05; } };
 trk.addEventListener('pointerup', endDrag); trk.addEventListener('pointercancel', endDrag);
-mini.onclick = () => detalle(chNow, null);
+mini.onclick = () => { audioOn(); sfx('tap'); detalle(chNow, null); };
 /* Tocar la escena: continúa si el detalle está abierto; si no, pausa o reanuda */
 addEventListener('pointerdown', e => {
   if (!started || e.target.closest('#bar,#portada,.btn,#mini')) return;
-  if (sheet) { play(true); return; }
-  if (e.target === canvas) play(!playing);
+  audioOn();
+  if (sheet) { sfx('play'); play(true); return; }
+  if (e.target === canvas) { play(!playing); sfx(playing ? 'play' : 'pause'); }
 });
 addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); pp.click(); }
@@ -776,7 +832,7 @@ function update(t) {
 
 function ui(t) {
   let i = 0; while (i < CH.length - 1 && t >= CH[i + 1].t) i++;
-  if (i !== chNow) { chNow = i; setPanel(i); hitos.forEach((h, k) => { h.classList.toggle('ya', k < i); h.classList.toggle('es', k === i); }); }
+  if (i !== chNow) { if (playing && chNow >= 0 && i > 0) sfx('paso'); chNow = i; setPanel(i); hitos.forEach((h, k) => { h.classList.toggle('ya', k < i); h.classList.toggle('es', k === i); }); }
   const enCap = started && i <= 6 && t > CH[i].t + .5 && t < CH[i + 1].t - .25, mov = MOV();
   panel.classList.toggle('on', mov ? sheet && i <= 6 : enCap);
   mini.classList.toggle('on', mov && enCap && !sheet);
@@ -807,6 +863,9 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(.1, (now - last) / 1000); last = now;
   if (playing) { t += dt; if (t >= T) { t = T; playing = false; } }
+  if (playing && t > prevT && t - prevT < .5) for (const x of [69.6, 87.1, 96]) if (prevT < x && t >= x) sfx('campana');
+  prevT = t;
+  if (AC && duck !== playing) { duck = playing; musG.gain.setTargetAtTime(playing ? .2 : .07, AC.currentTime, .6); }
   update(t); ui(t); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
