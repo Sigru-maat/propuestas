@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Propuesta Maat · AEI · Subestación Enel Salitre</title>
 <meta name="robots" content="noindex, nofollow">
-<meta name="description" content="Propuesta animada: el proceso paso a paso, los valores y los beneficios. Dura menos de dos minutos.">
+<meta name="description" content="Propuesta animada: el proceso paso a paso, los valores y los beneficios. Dura un minuto y medio.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Maat Soluciones Ambientales">
 <meta property="og:locale" content="es_CO">
 <meta property="og:title" content="Propuesta Maat para AEI · Asbesto en la subestación Enel Salitre">
-<meta property="og:description" content="Propuesta animada: el proceso paso a paso, los valores y los beneficios. Dura menos de dos minutos.">
+<meta property="og:description" content="Propuesta animada: el proceso paso a paso, los valores y los beneficios. Dura un minuto y medio.">
 <meta property="og:url" content="https://sigru-maat.github.io/propuestas/aei-enel-salitre/">
 <meta property="og:image" content="https://sigru-maat.github.io/propuestas/aei-enel-salitre/vista-previa.jpg">
 <meta property="og:image:type" content="image/jpeg">
@@ -269,7 +269,7 @@ body.og #og{display:flex;position:fixed;inset:0;z-index:20;flex-direction:column
   <h1>Gestión de residuos con asbesto en la subestación Enel Salitre</h1>
   <p>Preparada para Jhon Pinzón · AEI Arquitectura e Interiores</p>
   <button id="go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.2v13.6a1 1 0 0 0 1.5.86l11-6.8a1 1 0 0 0 0-1.72l-11-6.8A1 1 0 0 0 8 5.2z"/></svg>Ver la propuesta</button>
-  <small>Dura menos de dos minutos · puede pausar o saltar a cualquier paso en la barra inferior</small>
+  <small>Dura un minuto y medio · puede pausar o saltar a cualquier paso en la barra inferior</small>
 </div></div>
 
 <div id="og">
@@ -302,7 +302,7 @@ document.querySelectorAll('[data-logo="maatW"]').forEach(i => i.src = LOGOS.maat
 }
 
 /* ---------- Guion ---------- */
-const T = 108;
+const T = 108, RITMO = 1.2; /* RITMO: velocidad de reproducción (1.2 = 20 % más rápido) */
 const CH = [
   { t: 0,  s: 4, n: 'Inicio', k: 'Propuesta 04-9338', h: 'Retiro seguro del asbesto, de la obra a la celda',
     p: 'Remodelación de la subestación Enel Salitre, en Bogotá. Así lo haremos, paso a paso.' },
@@ -855,7 +855,7 @@ function ui(t) {
   valores.forEach((v, k) => { v.textContent = money(+v.dataset.v * ss(prog(t, 85 + k * .7, 1.5))); });
   benefLi.forEach((l, k) => { const u = ss(prog(t, 96.2 + k * .55, .6)); l.style.opacity = u; l.style.transform = 'translateX(' + (1 - u) * -12 + 'px)'; });
   const pc = t / T * 100; fill.style.width = pc + '%'; thumb.style.left = pc + '%';
-  const s = Math.floor(t); timeEl.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ' / 1:48';
+  const mmss = x => { x = Math.floor(x / RITMO); return Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0'); }; timeEl.textContent = mmss(t) + ' / ' + mmss(T);
   const st = playing ? 'pause' : (t >= T - .05 ? 'again' : 'play'); if (st !== ppState) { ppState = st; pp.innerHTML = ICO[st]; }
   const W = innerWidth, H = innerHeight;
   for (const l of LB) {
@@ -872,8 +872,8 @@ addEventListener('resize', resize); resize();
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(.1, (now - last) / 1000); last = now;
-  if (playing) { t += dt; if (t >= T) { t = T; playing = false; } }
-  if (playing && t > prevT && t - prevT < .5) for (const x of [69.6, 87.1, 96]) if (prevT < x && t >= x) sfx('campana');
+  if (playing) { t += dt * RITMO; if (t >= T) { t = T; playing = false; } }
+  if (playing && t > prevT && t - prevT < .6) for (const x of [69.6, 87.1, 96]) if (prevT < x && t >= x) sfx('campana');
   prevT = t;
   if (AC && duck !== playing) { duck = playing; musG.gain.setTargetAtTime(playing ? .2 : .07, AC.currentTime, .6); }
   update(t, playing ? dt : 0); ui(t); renderer.render(scene, camera);
